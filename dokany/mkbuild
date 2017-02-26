@@ -41,5 +41,10 @@ rm -rf -- "$out"
 mkdir -p -- "$out"
 
 update
+
+if [ "$1" = "update" ]
+  then exit 0
+fi
+
 compile i686-w64-mingw32
 compile x86_64-w64-mingw32

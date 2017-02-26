@@ -47,6 +47,8 @@ set -ex
 rm -rf -- "$out"
 mkdir -p -- "$out"
 
+"$parent"/dokany/mkbuild update
+
 update
 
 compile "x86_64"
