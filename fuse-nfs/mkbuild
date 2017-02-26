@@ -1,0 +1,64 @@
+#!/bin/bash
+
+src=src
+build=build
+out=out
+uri=git@github.com:Daniel-Abrecht/fuse-nfs.git
+
+root="$(realpath "$(dirname "$0")")"
+parent="$(realpath "$root"/..)"
+
+src="$root/$src"
+build="$root/$build"
+out="$root/$out"
+
+function update {
+  if [ ! -d "$src" ]
+  then
+    git clone -- "$uri" "$src"
+  else
+    cd -- "$src"
+    git checkout .
+    git clean -f .
+    git pull
+  fi
+  cd -- "$src"
+  autoreconf --install
+  cd -- "$root"
+}
+
+function compile {
+  rm -rf -- "$build"
+  mkdir -p -- "$build"
+  cd -- "$build"
+  incs=( "${INCLUDES[@]/#/-I}" )
+  libs=( "${LIBS[@]/\%ARCH\%/"$1"}" )
+  libs=( "${libs[@]/#/-L}" )
+  "$src"/configure --host="$1" CPPFLAGS="${incs[*]} $FLAGS" CFLAGS="${incs[*]} $FLAGS" LDFLAGS="${libs[*]}"
+  make
+  cd -- "$root"
+  mkdir -p "$out/$1"
+  cp "$build"/fuse/$2 "$out/$1"
+}
+
+set -ex
+
+rm -rf -- "$out"
+mkdir -p -- "$out"
+
+"$parent"/libnfs/mkbuild
+"$parent"/dokany/mkbuild
+
+update
+
+INCLUDES=( "$parent"/libnfs/src/include/ )
+LIBS=( "$parent"/libnfs/out/%ARCH%/ )
+
+compile "x86_64" fuse-nfs
+
+FLAGS=" -static -static-libgcc -static-libstdc++"
+LIBS+=( "$parent"/dokany/out/%ARCH%/ )
+INCLUDES+=( "$parent"/dokany/src/dokan_fuse/include/ )
+
+compile "i686-w64-mingw32" fuse-nfs.exe
+compile "x86_64-w64-mingw32" fuse-nfs.exe

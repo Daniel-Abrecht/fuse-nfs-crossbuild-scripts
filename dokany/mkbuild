@@ -1,0 +1,45 @@
+#!/bin/bash
+
+src=src
+build=build
+out=out
+uri=git@github.com:dokan-dev/dokany.git
+
+root="$(realpath "$(dirname "$0")")"
+
+src="$root/$src"
+build="$root/$build"
+out="$root/$out"
+
+function update {
+  if [ ! -d "$src" ]
+  then
+    git clone -- "$uri" "$src"
+  else
+    cd -- "$src"
+    git checkout .
+    git clean -f .
+    git pull
+  fi
+  cd -- "$root"
+}
+
+function compile {
+  rm -rf -- "$build"
+  mkdir -p -- "$build"
+  cd -- "$build"
+  cmake -DCMAKE_TOOLCHAIN_FILE="$root/toolchain/$1.cmake" "$src"/dokan_fuse/
+  make
+  mkdir -p "$out/$1"
+  cp "$build"/libdokanfuse1.dll{,.a} "$out/$1/"
+  cd -- "$root"
+}
+
+set -ex
+
+rm -rf -- "$out"
+mkdir -p -- "$out"
+
+update
+compile i686-w64-mingw32
+compile x86_64-w64-mingw32
