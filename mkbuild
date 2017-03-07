@@ -1,5 +1,9 @@
 #!/bin/bash
 
+PATH="$PATH:/usr/sbin:/usr/bin:/sbin:/bin"
+
+touch /tmp/test
+
 root="$(realpath "$(dirname "$0")")"
 out="$root"/out
 token=$(</etc/github_token)
@@ -341,7 +345,9 @@ function github_create_release {
     if [ -d "$file" ]
     then
       zip="$file.zip"
-      zip -r "$zip" "$file"
+      pushd "$4"
+      zip -r "$zip" "$(basename "$file")"
+      popd
       github_create_release_asset "$1" "$id" "$zip" "$(basename "$zip")"
       rm "$zip"
     elif [ -f "$file" ]
