@@ -3,11 +3,14 @@
 src=src
 build=build
 out=out
-uri=git@github.com:Daniel-Abrecht/libnfs.git
-#uri=git@github.com:sahlberg/libnfs.git
+uri=git@github.com:sahlberg/libnfs.git
+checkout=master
 
 root="$(realpath "$(dirname "$0")")"
 parent="$(realpath "$root"/..)"
+
+if [ -n "$LIBNFS_URI"      ]; then uri="$LIBNFS_URI"; fi
+if [ -n "$LIBNFS_CHECKOUT" ]; then checkout="$LIBNFS_CHECKOUT"; fi
 
 src="$root/$src"
 build="$root/$build"
@@ -19,10 +22,12 @@ function update {
     git clone -- "$uri" "$src"
   else
     cd -- "$src"
-    git checkout .
+    git remote set-url origin "$uri"
+    git checkout master
     git clean -f .
     git pull
   fi
+  git checkout "$checkout"
   cd -- "$src"
   autoreconf --install
   cd -- "$root"

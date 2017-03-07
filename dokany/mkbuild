@@ -4,8 +4,12 @@ src=src
 build=build
 out=out
 uri=git@github.com:dokan-dev/dokany.git
+checkout=master
 
 root="$(realpath "$(dirname "$0")")"
+
+if [ -n "$DOKANY_URI"      ]; then uri="$DOKANY_URI"; fi
+if [ -n "$DOKANY_CHECKOUT" ]; then checkout="$DOKANY_CHECKOUT"; fi
 
 src="$root/$src"
 build="$root/$build"
@@ -17,10 +21,12 @@ function update {
     git clone -- "$uri" "$src"
   else
     cd -- "$src"
-    git checkout .
+    git remote set-url origin "$uri"
+    git checkout master
     git clean -f .
     git pull
   fi
+  git checkout "$checkout"
   cd -- "$root"
 }
 

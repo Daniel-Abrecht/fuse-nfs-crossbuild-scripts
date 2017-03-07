@@ -1,0 +1,436 @@
+#!/bin/bash
+
+root="$(realpath "$(dirname "$0")")"
+out="$root"/out
+token=$(</etc/github_token)
+
+mkdir -p "$out"
+
+function tfile_skip {
+  while IFS= read x && [ -n "$x" ]
+    do true
+  done
+}
+
+function read_section {
+  while IFS= read x && [ -n "$x" ]
+    do printf '%s\n' "$x"
+  done
+}
+
+function check_version_lt {
+  IFS=. v1=($1)
+  IFS=. v2=($2)
+  if [[ "${#v1[@]}" < "${#v2[@]}" ]]
+    then n="${#v1[@]}"
+    else n="${#v2[@]}"
+  fi
+  i=0
+  while [ "$i" -lt "$n" ]
+  do
+    if [ "${v1[$i]}" -gt "${v2[$i]}" ]
+    then
+      return 1
+    fi
+    if [ "${v1[$i]}" -lt "${v2[$i]}" ]
+    then
+      return 0
+    fi
+    i="$(expr "$i" + 1)"
+  done
+  [[ "${#v1[@]}" < "${#v2[@]}" ]]
+  return $?
+}
+
+function check_version_range {
+  version="$1"
+  min="$2"
+  max="$3"
+  [ -z "$min" ] || check_version_lt "$min" "$version" &&
+  [ -z "$max" ] || check_version_lt "$version" "$max"
+  return $?
+}
+
+function check_version {
+  version="$1"
+  rule="$2"
+  if [ "${rule::1}" = '=' ]
+  then
+    test "${rule:1}" = "$version"
+    return $?
+  fi
+  if printf '%s' "$rule" | grep -q '<'
+  then
+    IFS='<' rule=($rule)
+    check_version_range "$version" "${rule[@]}"
+    return $?
+  fi
+  return 1
+}
+
+function ref_compare_match {
+  c="$1"; shift
+  for part in "$@"
+  do
+    if [ -z "$part" ]
+      then continue
+    fi
+    if [ "${part::1}" = '{' ] && [ "${part:${#part}-1}" = '}' ]
+    then
+      version="$( printf "%s" "$c" | grep -m 1 -oE "[0-9]+(.[0-9]+)*" | head -n 1 )"
+      if check_version "$version" "${part:1:${#part}-2}"
+      then
+        c="${c:${#part}}"
+        printf '%s\n' "$version"
+        continue
+      fi
+    fi
+    if [ "$part" = "${c::${#part}}" ]
+    then
+      c="${c:${#part}}"
+      continue
+    fi
+    return 1
+  done
+  if [ -n "$c" ]
+    then return 1
+  else
+    return 0
+  fi
+}
+
+function ref_version_lt {
+  v1="$1"; shift
+  v2="$1"; shift
+  if [ -z "$v1" ]
+    then return 0
+  fi
+  IFS=$'\n' v1=($(ref_compare_match "$v1" "$@"))
+  IFS=$'\n' v2=($(ref_compare_match "$v2" "$@"))
+  while [ "$i" -lt "${#v1[@]}" ]
+  do
+    if check_version_lt "${v1[$i]}" "${v2[$i]}"
+      then return 0
+    fi
+    if check_version_lt "${v2[$i]}" "${v1[$i]}"
+      then return 1
+    fi
+    i="$(expr "$i" + 1)"
+  done
+  return 1
+}
+
+function get_matching_refs {
+  out="$1"; shift
+  repo="$1"; shift
+  url="$1"; shift
+  IFS=$'\n' refs=($(git ls-remote "$url"|grep -v '\^{}$'))
+  t_refs=( "$@" )
+  for t_ref in "${t_refs[@]}"
+  do
+    opts=
+    if [ "${t_ref::1}" = "+" ]
+    then
+      opts="mandatory:"
+      t_ref="${t_ref:1}"
+    fi
+    latest_ref=
+    latest_hash=
+    for ref in "${refs[@]}"
+    do
+      IFS=$'\t' ref=($ref)
+      hash="${ref[0]}"
+      ref="${ref[1]}"
+      IFS=$'\n' t_ref_parts=($(printf "%s\n" "$t_ref" | sed 's/{[^}]*}/\n\0\n/g'))
+      if [ "$t_ref" = "master" ] && [ "$ref" = "HEAD" ]
+        then printf "%smatch:latest %s %s\n" "$opts" "$hash" master
+      elif ref_compare_match "$ref" "${t_ref_parts[@]}" >/dev/null
+      then
+        printf "%smatch %s %s\n" "$opts" "$hash" "$ref"
+        if ref_version_lt "$latest_ref" "$ref" "${t_ref_parts[@]}"
+        then
+          latest_ref="$ref"
+          latest_hash="$hash"
+        fi
+      fi
+    done
+    if [ -n "$latest_hash" ]
+      then printf "latest %s %s\n" "$latest_hash" "$latest_ref"
+    fi
+  done
+}
+
+function combine {
+  if [ -z "$1" ]
+    then printf "%s\n" "$2"
+  fi
+  if [ -z "$2" ]
+    then printf "%s\n" "$1"
+  fi
+  IFS=$'\n'
+  a=($1)
+  b=($2)
+  for x in "${a[@]}"
+  do for y in "${b[@]}"
+    do printf "%s\t%s\n" "$x" "$y"
+  done; done
+}
+
+function build_prepare {
+  base="$(dirname "$1")"
+  {
+
+    IFS= read name
+    IFS= read github_release
+    tfile_skip
+
+    target_root="$out/$name"
+
+    IFS=$'\n'
+    repos=($(read_section))
+    out_files=($(read_section))
+    matches=()
+
+    if [ "${#repos[@]}" = 0 ]
+    then
+      printf 'Error: Build failed for "%s". No repos specified\n' "$base" 1>&2
+      return 1
+    fi
+
+    i=0
+    for repo in "${repos[@]}"
+    do
+      IFS=' '
+      refs="$(get_matching_refs "$target_root" $repo|sed -e "s/^/$i /")"
+      matches+=("$refs")
+      if [ -z "$refs" ]
+      then
+        printf 'Error: Build failed for "%s". No match for repo "%s"\n' "$base" "$repo" 1>&2
+        return 1
+      fi
+      i="$(expr "$i" + 1)"
+    done
+
+    mandatory=
+    latest=
+    i=0
+    while [ "$i" -lt "${#repos[@]}" ]
+    do
+      m="$(printf "%s" "${matches[$i]}" | grep -E "[0-9]+ [^ ]*mandatory" | cut -d ' ' -f1,3,4 | sort -u)"
+      l="$(printf "%s" "${matches[$i]}" | grep -E "[0-9]+ [^ ]*latest" | cut -d ' ' -f1,3,4 | sort -u)"
+      if [ -z "$l" ]
+        then l="*$(printf "%s" "${matches[$i]}" | head -n 1)"
+      fi
+      if [ -z "$m" ]; then
+        if printf '%s' "$l" | grep -Evq "[0-9]+ [^ ]+ [^ ]+ master "
+          then m="$(printf '%s' "$l" | grep -Ev "[0-9]+ [^ ]+ [^ ]+ master " | head -n 1)"
+          else m="$(printf '%s' "$l" | head -n 1)"
+        fi
+        if [ "${m::1}" != '*' ]
+          then m="*$m"
+        fi
+      fi
+      mandatory="$(combine "$mandatory" "$m")"
+      latest="$(combine "$latest" "$l")"
+      i="$(expr "$i" + 1)"
+    done
+
+    tmp="$(printf '%s\n%s\n' "$mandatory" "$latest" | sort -u)"
+    all="$({
+      printf '%s\n' "$tmp" |
+      while IFS= read -r line
+      do
+        if ! printf '%s' "$line" | grep -Eq $'\\*[0-9]+ [0-9a-zA-Z]+ [^\t]+'
+        then
+          printf '%s\n' "$line"
+          continue
+        fi
+        regex="$({
+          IFS=$'\t' dep=($line)
+          printf '^'
+          i=0
+          for d in "${dep[@]}"
+          do
+            if [ "$i" = 1 ]
+              then printf '\t'
+            fi
+            printf '[0-9]+ '
+            IFS=$' ' d=($d)
+            if [ "${d[0]::1}" = '*' ]
+              then printf '[0-9a-zA-Z]+'
+              else printf '%s' "${d[1]}"
+            fi
+            printf ' [^\t]+'
+            i=1
+          done
+          printf '$\n'
+        })"
+        printf "%s" "$tmp" |
+        if ! grep -Eq "$regex"
+          then printf "%s\n" "$line"
+        fi
+      done
+    })"
+    unset tmp
+
+    IFS=$'\n'
+    for target in $all
+    do
+      np=
+      hash=
+      vars=
+      desc=
+      IFS=$'\t'
+      for part in $target
+      do
+        IFS=' '
+        p=($part)
+        if [ "${p[0]::1}" = '*' ]
+          then rnr=${p[0]:1}
+          else rnr=${p[0]}
+        fi
+        r=(${repos[$rnr]})
+        const="$(printf '%s' "${r[0]}" | tr /a-z/ /A-Z/ | sed 's/[^A-Z0-9]*//g')"
+        vars+="${const}_CHECKOUT=${p[1]} ${const}_URI=${r[1]} "
+        desc+="${r[0]} repo=${r[1]} ref=${p[2]} commit=${p[1]}"$'\1'
+        if [ "${p[0]::1}" = '*' ]
+          then continue
+        fi
+        hash+="-${p[1]}"
+        np+="${r[0]}=$(printf '%s' "${p[2]}" | grep -o '[^/]*$')_"
+      done
+      suffix="$(printf "%s" "$hash" | md5sum - | grep -o '^[^ ]*')"
+      target_list+=("$(printf "%s\n%s\n%s\n%s" "${vars[*]}" "$(basename "$np$suffix")" "${np::${#np}-1}" "$desc")")
+    done
+    unset target;
+
+  } < "$base"/.target
+}
+
+function remove_from_github {
+  id=$(<"$2"/.id)
+  curl -H 'Authorization: token '"$token" --url "https://api.github.com/repos/$1/releases/$id" -X DELETE
+}
+
+function github_create_release_asset {
+  uri="https://api.github.com/repos/$1/releases/$2/assets?name=$4"
+  curl -H 'Authorization: token '"$token" --url "$uri" -d "$3"
+}
+
+function github_create_release {
+  id="$(
+    json_escape '{
+  "tag_name": %s,
+  "target_commitish": "release",
+  "name": %s,
+  "body": %s,
+  "draft": false,
+  "prerelease": false
+}
+' "$2" "$2" "$3" |
+    curl -H 'Authorization: token '"$token" --url "https://api.github.com/repos/$1/releases" -d "@-" |
+    grep -o '"id": [0-9][0-9]*' | grep -o '[0-9]*$' | head -n 1
+  )"
+  printf '%s' "$id" > "$4"/.id
+  IFS=$'\n'
+  for file in $(find "$4" -type f -printf "%P\n")
+  do
+    if [ -f "$file" ]
+      then github_create_release_asset "$1" "$id" "$4/$file" "$file"
+    fi
+  done
+}
+
+function remove_old {
+  for build_dir in "$target_root"/*/
+  do if ! [ -d "$build_dir" ]; then break; fi
+    name="$(basename "$build_dir")"
+    found=false
+    for it in "${target_list[@]}"
+    do
+      IFS=$'\n' params=($it)
+      if [ "${params[1]}" = "$name" ]
+      then
+        found=true
+        break
+      fi
+    done
+    if [ "$found" = false ]
+    then
+      remove_from_github "$github_release" "$build_dir" "$(printf '%s' "$name" | sed 's/-[^-]*$//')"
+      rm -rf -- "$build_dir"
+    fi
+  done
+}
+
+function create {
+  base="$1"
+  for target in "${target_list[@]}"
+  do
+    IFS=$'\n' target=($target)
+    if [ -d  "$target_root/${target[1]}" ]; then continue; fi
+    if [ -f  "$target_root/${target[1]}.log" ]; then continue; fi
+    IFS=' '
+    export ${target[0]}
+    if ! "$base/mkbuild" &> "$target_root/${target[1]}.log"
+      then continue
+    fi
+    for output in "${out_files[@]}"
+    do (
+      set -f
+      p=($output)
+      file_root="$base/${p[0]}"
+      set +f
+      for files in "${p[@]:1}"
+      do for file in "$file_root"/$files
+        do
+          dest="$target_root/${target[1]}/${file:${#file_root}}"
+          src="$(realpath "$file")"
+          mkdir -p "$(dirname "$dest")"
+          cp -a "$src" "$dest"
+        done
+      done
+    ) done
+    mv "$target_root/${target[1]}.log" "$target_root/${target[1]}/build.log"
+    github_create_release "$github_release" "${target[2]}" "${target[3]}" "$target_root/${target[1]}"
+  done
+}
+
+function json_escape {
+  format="$1"
+  shift
+  args=()
+  for x in "$@"
+  do
+    args+=("$({
+      printf '"'
+      printf "%s" "$x" | tr '\n' '\1' | sed $'s/\1/\\\\n/g' | sed 's/"/\\"/g'
+      printf '"'
+    })")
+  done
+  printf "$format" "${args[@]}"
+}
+
+function build {
+
+  target_list=()
+  target_root=
+  out_files=()
+  github_release=
+  base="$(dirname "$1")"
+
+  build_prepare "$@"
+  mkdir -p "$target_root"
+  remove_old
+  create "$base"
+
+}
+
+target_list=
+target_root=
+out_files=
+github_release=
+
+find "$root" -name '\.target' | while read target
+  do build "$(realpath "$target")"
+done
