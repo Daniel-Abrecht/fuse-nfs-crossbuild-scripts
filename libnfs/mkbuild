@@ -20,6 +20,7 @@ function update {
   if [ ! -d "$src" ]
   then
     git clone -- "$uri" "$src"
+    cd -- "$src"
   else
     cd -- "$src"
     git remote set-url origin "$uri"

@@ -309,12 +309,15 @@ function build_prepare {
 
 function remove_from_github {
   id=$(<"$2"/.id)
-  curl -H 'Authorization: token '"$token" --url "https://api.github.com/repos/$1/releases/$id" -X DELETE
+  curl -H 'Authorization: token '"$token" --url "https://api.github.com/repos/$1/releases/$id" -X DELETE &>/dev/null
+  git push origin ":$3" &>/dev/null
 }
 
 function github_create_release_asset {
-  uri="https://api.github.com/repos/$1/releases/$2/assets?name=$4"
-  curl -H 'Authorization: token '"$token" --url "$uri" -d "$3"
+  uri="https://uploads.github.com/repos/$1/releases/$2/assets?name=$4"
+  file="$3"
+  mime="$(file --mime-type "$file" | grep -o '[^ ]*$')"
+  curl -X POST -H 'Authorization: token '"$token" -H "Content-Type: $mime" -H "Accept: application/vnd.github.manifold-preview" --url "$uri" --data-binary "@$file" &>/dev/null
 }
 
 function github_create_release {
@@ -329,14 +332,21 @@ function github_create_release {
 }
 ' "$2" "$2" "$3" |
     curl -H 'Authorization: token '"$token" --url "https://api.github.com/repos/$1/releases" -d "@-" |
-    grep -o '"id": [0-9][0-9]*' | grep -o '[0-9]*$' | head -n 1
+    grep -o '"id": [0-9][0-9]*' | head -n 1 | grep -o '[0-9]*$'
   )"
   printf '%s' "$id" > "$4"/.id
   IFS=$'\n'
-  for file in $(find "$4" -type f -printf "%P\n")
+  for file in "$4"/*
   do
-    if [ -f "$file" ]
-      then github_create_release_asset "$1" "$id" "$4/$file" "$file"
+    if [ -d "$file" ]
+    then
+      zip="$file.zip"
+      zip -r "$zip" "$file"
+      github_create_release_asset "$1" "$id" "$zip" "$(basename "$zip")"
+      rm "$zip"
+    elif [ -f "$file" ]
+    then
+      github_create_release_asset "$1" "$id" "$file" "$(basename "$file")"
     fi
   done
 }
@@ -431,6 +441,6 @@ target_root=
 out_files=
 github_release=
 
-find "$root" -name '\.target' | while read target
+find "$root" -name '\.target' | while IFS= read -r target
   do build "$(realpath "$target")"
 done
