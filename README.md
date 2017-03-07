@@ -1,5 +1,7 @@
 # Build scripts for fuse-nfs
 
+This reposiory contains build scripts for https://github.com/sahlberg/fuse-nfs 
+
 ## How to use these build scripts
 
 Each folder in the project root directory contains a shell script called `mkbuild`.
