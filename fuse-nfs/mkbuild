@@ -3,7 +3,7 @@
 src=src
 build=build
 out=out
-uri=git@github.com:sahlberg/fuse-nfs.git
+uri=https://github.com/sahlberg/fuse-nfs.git
 checkout=master
 
 root="$(realpath "$(dirname "$0")")"
