@@ -10,6 +10,16 @@ token=$(</etc/github_token)
 
 mkdir -p "$out"
 
+function rcurl {
+  i=10
+  while ! curl --fail --silent --show-error "$@" && [ "$i" != 0 ]
+  do
+    sleep 6
+    i="$(expr "$i" - 1)"
+  done
+  return $?
+}
+
 function tfile_skip {
   while IFS= read x && [ -n "$x" ]
     do true
@@ -283,7 +293,7 @@ function build_prepare {
       np=
       hash=
       vars=
-      desc=
+      desc="$(date -u '+%Y:%m:%d %H:%M:%S') UTC"$'\1\1'
       IFS=$'\t'
       for part in $target
       do
@@ -313,15 +323,19 @@ function build_prepare {
 
 function remove_from_github {
   id=$(<"$2"/.id)
-  curl -H 'Authorization: token '"$token" --url "https://api.github.com/repos/$1/releases/$id" -X DELETE &>/dev/null
+  if ! rcurl -H 'Authorization: token '"$token" --url "https://api.github.com/repos/$1/releases/$id" -X DELETE >/dev/null
+    then return 1
+  fi
   git push origin ":$3" &>/dev/null
+  return 0
 }
 
 function github_create_release_asset {
   uri="https://uploads.github.com/repos/$1/releases/$2/assets?name=$4"
   file="$3"
   mime="$(file --mime-type "$file" | grep -o '[^ ]*$')"
-  curl -X POST -H 'Authorization: token '"$token" -H "Content-Type: $mime" -H "Accept: application/vnd.github.manifold-preview" --url "$uri" --data-binary "@$file" &>/dev/null
+  rcurl -X POST -H 'Authorization: token '"$token" -H "Content-Type: $mime" -H "Accept: application/vnd.github.manifold-preview" --url "$uri" --data-binary "@$file" >/dev/null
+  return $?
 }
 
 function github_create_release {
@@ -335,9 +349,14 @@ function github_create_release {
   "prerelease": false
 }
 ' "$2" "$(printf '%s' "$2" | tr '_' ' ' )" "$3" |
-    curl -H 'Authorization: token '"$token" --url "https://api.github.com/repos/$1/releases" -d "@-" |
+    rcurl -H 'Authorization: token '"$token" --url "https://api.github.com/repos/$1/releases" -d "@-" |
     grep -o '"id": [0-9][0-9]*' | head -n 1 | grep -o '[0-9]*$'
   )"
+  printf '%s' "$2" > "$4"/.tag
+  if [ -z "$id" ]
+  then
+    return 1
+  fi
   printf '%s' "$id" > "$4"/.id
   IFS=$'\n'
   for file in "$4"/*
@@ -349,12 +368,20 @@ function github_create_release {
       zip -r "$zip" "$(basename "$file")"
       popd
       github_create_release_asset "$1" "$id" "$zip" "$(basename "$zip")"
+      if [ "$?" != "0" ]
+        then return 1
+      fi
       rm "$zip"
     elif [ -f "$file" ]
     then
       github_create_release_asset "$1" "$id" "$file" "$(basename "$file")"
+      if [ "$?" != "0" ]
+        then return 1
+      fi
     fi
   done
+  printf 'Released: %s\n' "$2"
+  return 0
 }
 
 function remove_old {
@@ -373,8 +400,9 @@ function remove_old {
     done
     if [ "$found" = false ]
     then
-      remove_from_github "$github_release" "$build_dir" "$(printf '%s' "$name" | sed 's/-[^-]*$//')"
-      rm -rf -- "$build_dir"
+      if remove_from_github "$github_release" "$build_dir" "$(printf '%s' "$name" | sed 's/-[^-]*$//')"
+        then rm -rf -- "$build_dir"
+      fi
     fi
   done
 }
@@ -408,7 +436,9 @@ function create {
       done
     ) done
     mv "$target_root/${target[1]}.log" "$target_root/${target[1]}/build.log"
-    github_create_release "$github_release" "${target[2]}" "${target[3]}" "$target_root/${target[1]}"
+    if ! github_create_release "$github_release" "${target[2]}" "${target[3]}" "$target_root/${target[1]}"
+      then mv "$target_root/${target[1]}" "$target_root/${target[1]}-uploadfail-$(date -u +%s)"
+    fi
   done
 }
 
