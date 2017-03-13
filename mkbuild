@@ -293,7 +293,7 @@ function build_prepare {
       np=
       hash=
       vars=
-      desc="$(date -u '+%Y:%m:%d %H:%M:%S') UTC"$'\1\1'
+      desc="$(date -u '+%Y-%m-%d %H:%M:%S') UTC"$'\1\1'
       IFS=$'\t'
       for part in $target
       do
