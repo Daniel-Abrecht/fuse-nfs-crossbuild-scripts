@@ -121,6 +121,7 @@ function ref_version_lt {
   fi
   IFS=$'\n' v1=($(ref_compare_match "$v1" "$@"))
   IFS=$'\n' v2=($(ref_compare_match "$v2" "$@"))
+  i=0
   while [ "$i" -lt "${#v1[@]}" ]
   do
     if check_version_lt "${v1[$i]}" "${v2[$i]}"
