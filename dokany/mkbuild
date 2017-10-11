@@ -38,7 +38,7 @@ function compile {
   cmake -DCMAKE_TOOLCHAIN_FILE="$root/toolchain/$1.cmake" "$src"/dokan_fuse/
   make
   mkdir -p "$out/$1"
-  cp "$build"/libdokanfuse1.dll{,.a} "$out/$1/"
+  cp "$build"/libdokanfuse?.dll{,.a} "$out/$1/"
   cd -- "$root"
 }
 
