@@ -93,7 +93,7 @@ function ref_compare_match {
     fi
     if [ "${part::1}" = '{' ] && [ "${part:${#part}-1}" = '}' ]
     then
-      version="$( printf "%s" "$c" | grep -m 1 -oE "[0-9]+(.[0-9]+)*" | head -n 1 )"
+      version="$c"
       if check_version "$version" "${part:1:${#part}-2}"
       then
         c="${c:${#part}}"
@@ -141,7 +141,8 @@ function get_matching_refs {
   out="$1"; shift
   repo="$1"; shift
   url="$1"; shift
-  IFS=$'\n' refs=($(git ls-remote "$url"|grep -v '\^{}$'))
+  ls_rem="$(git ls-remote "$url")" # Don't merge this into the next line, the build shall fail if this command fails
+  IFS=$'\n' refs=($(printf '%s' "$ls_rem"|grep -v '\^{}$'))
   t_refs=( "$@" )
   for t_ref in "${t_refs[@]}"
   do
@@ -150,6 +151,9 @@ function get_matching_refs {
     then
       opts="mandatory:"
       t_ref="${t_ref:1}"
+    fi
+    if [ "$t_ref" != "master" ] && echo "$t_ref" | grep -qv /
+      then printf "%smatch:latest %s %s\n" "$opts" "$t_ref" "$t_ref"
     fi
     latest_ref=
     latest_hash=
@@ -194,7 +198,8 @@ function combine {
 }
 
 function build_prepare {
-  base="$(dirname "$1")"
+  tfile="$1"
+  base="$(dirname "$tfile")"
   {
 
     IFS= read name
@@ -321,7 +326,7 @@ function build_prepare {
     done
     unset target;
 
-  } < "$base"/.target
+  } < "$tfile"
 }
 
 function remove_from_github {
@@ -480,6 +485,11 @@ target_root=
 out_files=
 github_release=
 
-find "$root" -name '\.target' | while IFS= read -r target
-  do build "$(realpath "$target")"
+rout="$out"
+
+find "$root" -name '*.target' -type f | while IFS= read -r target
+do
+  out="$rout/$target"
+  mkdir -p "$out"
+  build "$(realpath "$target")"
 done

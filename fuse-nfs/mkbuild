@@ -63,7 +63,7 @@ LIBS=( "$parent"/libnfs/out/%ARCH%/ )
 
 compile "x86_64" fuse-nfs
 
-FLAGS=" -static -static-libgcc -static-libstdc++"
+FLAGS=" -static -static-libgcc -static-libstdc++ -pthread -l:libpthread.a"
 LIBS+=( "$parent"/dokany/out/%ARCH%/ )
 INCLUDES+=( "$parent"/dokany/src/dokan_fuse/include/ )
 
