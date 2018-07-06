@@ -2,8 +2,6 @@
 
 PATH="$PATH:/usr/sbin:/usr/bin:/sbin:/bin"
 
-touch /tmp/test
-
 root="$(realpath "$(dirname "$0")")"
 out="$root"/out
 token=$(</etc/github_token)
@@ -330,7 +328,9 @@ function build_prepare {
 }
 
 function remove_from_github {
+  if [ ! -f "$2"/.id ]; then return; fi
   id=$(<"$2"/.id)
+  if [ -n "$id" ]; then return; fi
   if ! rcurl -H 'Authorization: token '"$token" --url "https://api.github.com/repos/$1/releases/$id" -X DELETE >/dev/null
     then return 1
   fi
@@ -474,6 +474,9 @@ function build {
   base="$(dirname "$1")"
 
   build_prepare "$@"
+  if [ "$?" != 0 ] || [ "${#target_list[@]}" == 0 ]
+    then return 1
+  fi
   mkdir -p "$target_root"
   remove_old
   create "$base"
@@ -487,9 +490,17 @@ github_release=
 
 rout="$out"
 
+if [ -e mkbuild_lock ]
+  then exit 1
+fi
+
+touch mkbuild_lock
+
 find "$root" -name '*.target' -type f | while IFS= read -r target
 do
   out="$rout/$target"
   mkdir -p "$out"
   build "$(realpath "$target")"
 done
+
+rm mkbuild_lock
