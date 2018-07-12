@@ -35,14 +35,18 @@ function compile {
   rm -rf -- "$build"
   mkdir -p -- "$build"
   cd -- "$build"
+  chmod -w "$root"
   cmake -DCMAKE_TOOLCHAIN_FILE="$root/toolchain/$1.cmake" "$src"/dokan_fuse/
   make
+  chmod u+w "$root"
   mkdir -p "$out/$1"
   cp "$build"/libdokanfuse?.dll{,.a} "$out/$1/"
   cd -- "$root"
 }
 
 set -ex
+
+chmod u+w "$root"
 
 rm -rf -- "$out"
 mkdir -p -- "$out"

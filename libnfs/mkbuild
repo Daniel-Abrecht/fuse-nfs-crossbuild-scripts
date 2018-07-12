@@ -38,17 +38,21 @@ function compile {
   rm -rf -- "$build"
   mkdir -p -- "$build"
   cd -- "$build"
+  chmod -w "$root"
   incs=( "${INCLUDES[@]/#/-I}" )
   libs=( "${LIBS[@]/\%ARCH\%/"$1"}" )
   libs=( "${libs[@]/#/-L}" )
   "$src"/configure --host="$1" CPPFLAGS="${incs[*]} $FLAGS" CFLAGS="${incs[*]} $FLAGS" LDFLAGS="${libs[*]}"
   make
+  chmod u+w "$root"
   cd -- "$root"
   mkdir -p "$out/$1"
   cp "$build"/lib/.libs/libnfs.a "$out/$1"
 }
 
 set -ex
+
+chmod u+w "$root"
 
 rm -rf -- "$out"
 mkdir -p -- "$out"
