@@ -490,11 +490,11 @@ github_release=
 
 rout="$out"
 
-if [ -e mkbuild_lock ]
+if [ -e "$root/mkbuild_lock" ]
   then exit 1
 fi
 
-touch mkbuild_lock
+touch "$root/mkbuild_lock"
 
 find "$root" -name '*.target' -type f | while IFS= read -r target
 do
@@ -503,4 +503,4 @@ do
   build "$(realpath "$target")"
 done
 
-rm mkbuild_lock
+rm "$root/mkbuild_lock"
