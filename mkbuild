@@ -330,7 +330,7 @@ function build_prepare {
 function remove_from_github {
   if [ ! -f "$2"/.id ]; then return; fi
   id=$(<"$2"/.id)
-  if [ -n "$id" ]; then return; fi
+  if [ -z "$id" ]; then return; fi
   if ! rcurl -H 'Authorization: token '"$token" --url "https://api.github.com/repos/$1/releases/$id" -X DELETE >/dev/null
     then return 1
   fi
