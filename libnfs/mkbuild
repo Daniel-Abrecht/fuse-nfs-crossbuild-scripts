@@ -19,17 +19,16 @@ out="$root/$out"
 function update {
   if [ ! -d "$src" ]
   then
-    git clone -- "$uri" "$src"
+    git clone --no-checkout -- "$uri" "$src"
     cd -- "$src"
   else
     cd -- "$src"
     git remote set-url origin "$uri"
-    git checkout master
-    git clean -f .
-    git pull
+    find -maxdepth 1 -not -name .git -not -name . -exec rm -rf {} \;
+    git fetch
   fi
-  git checkout "$checkout"
-  cd -- "$src"
+  git checkout "$checkout" >/dev/null
+  git reset --hard;
   autoreconf --install
   cd -- "$root"
 }
