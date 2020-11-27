@@ -1,0 +1,9 @@
+fuse-nfs
+Daniel-Abrecht/fuse-nfs-crossbuild-scripts
+
+libnfs   https://github.com/sahlberg/libnfs.git +refs/tags/libnfs-{3.0.0<} +master
+fuse-nfs https://github.com/Daniel-Abrecht/fuse-nfs.git +dpa
+dokany   https://github.com/dokan-dev/dokany.git +refs/tags/v{1.4.0.0<} +refs/tags/v{2.0.0-BETA0<} master
+
+out/ */*
+../dokany/out/ */*.dll

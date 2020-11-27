@@ -4,7 +4,7 @@ src=src
 build=build
 out=out
 uri=https://github.com/dokan-dev/dokany.git
-checkout=master
+checkout=origin/master
 
 root="$(realpath "$(dirname "$0")")"
 

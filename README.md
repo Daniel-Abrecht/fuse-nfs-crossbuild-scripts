@@ -28,6 +28,7 @@ The releses in this repo are updated each hour if necessary.
 ## How to install a release in Windows
 
 The first step is to choose a release. The releases are named `repo1=ref1 repo2=ref2 ...`. If `ref` is `master`, the latest commit has been used for the release. Therefore, the newest release is always `libnfs=master fuse-nfs=master dokany=master`. However, this may not be the most stable release. If you want the newest stable release, choose the one with the most and highest version numbers.
+The versions with fuse-nfs=dpa are a fork of fuse-nfs which change the syntax of fuse-nfs to make it work in an fstab and to allow specifying arbitrary fuse options, which allows things like specifying the volume name in dokany, for example.
 
 The next step is to download the correct zip archive:
  * x86_64.zip              => linux amd64
